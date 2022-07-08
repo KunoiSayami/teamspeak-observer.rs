@@ -63,12 +63,16 @@ impl std::fmt::Display for TelegramData {
             TelegramData::Enter(time, client_id, nickname, country) => {
                 write!(
                     f,
-                    "[{}]{}({})[{}] joined",
+                    "[{}] {}({})[{}] joined",
                     time, nickname, client_id, country
                 )
             }
             TelegramData::Left(time, client_id, nickname, reason) => {
-                write!(f, "[{}]{}({}) left ({})", time, nickname, client_id, reason)
+                write!(
+                    f,
+                    "[{}] {}({}) left ({})",
+                    time, nickname, client_id, reason
+                )
             }
             TelegramData::Terminate => unsafe {
                 unreachable_unchecked();
