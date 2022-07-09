@@ -112,6 +112,7 @@ impl SocketConn {
             .unwrap())
     }
 
+    #[allow(unused)]
     async fn query_operation<T: FromQueryString + Sized>(
         &mut self,
         payload: &str,
@@ -156,8 +157,8 @@ impl SocketConn {
         self.query_operation_non_error("clientlist\n\r").await
     }
 
-    pub async fn logout(&mut self) -> QueryResult<()> {
-        self.basic_operation("quit\n\r").await
+    pub async fn logout(&mut self) -> anyhow::Result<()> {
+        self.write_data("quit\n\r").await
     }
 
     pub async fn register_events(&mut self) -> QueryResult<()> {

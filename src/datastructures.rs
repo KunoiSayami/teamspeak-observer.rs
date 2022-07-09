@@ -99,7 +99,7 @@ pub mod notifies {
     pub struct NotifyClientLeftView {
         #[serde(rename = "clid")]
         client_id: i64,
-        #[serde(rename = "reasonmsg")]
+        #[serde(rename = "reasonmsg", default)]
         reason: String,
     }
 
@@ -297,7 +297,7 @@ pub mod config {
         fn try_from(path: &Path) -> Result<Self, Self::Error> {
             let content = read_to_string(path).map_err(|e| anyhow!("Read error: {:?}", e))?;
 
-            Ok(toml::from_str(&content).map_err(|e| anyhow!("Deserialize toml error: {:?}", e))?)
+            toml::from_str(&content).map_err(|e| anyhow!("Deserialize toml error: {:?}", e))
         }
     }
 }
@@ -316,12 +316,14 @@ mod status_result {
     }
 
     impl QueryError {
+        #[allow(unused)]
         pub fn static_empty_response() -> Self {
             Self {
                 code: -1,
                 message: "Expect result but none found.".to_string(),
             }
         }
+        #[allow(unused)]
         pub fn code(&self) -> i32 {
             self.code
         }

@@ -3,7 +3,7 @@ use crate::datastructures::{FromQueryString, NotifyClientEnterView, NotifyClient
 use crate::socketlib::SocketConn;
 use anyhow::anyhow;
 use clap::{arg, Command};
-use log::{debug, error, info, trace, warn};
+use log::{debug, error, info, trace, warn, LevelFilter};
 use std::collections::HashMap;
 use std::fmt::Formatter;
 use std::hint::unreachable_unchecked;
@@ -38,7 +38,7 @@ async fn init_connection(
 }
 
 enum TelegramData {
-    Enter(String, i64, String, String),
+    Enter(String, i64, String, String, String),
     Left(String, i64, String, String),
     Terminate,
 }
@@ -51,6 +51,7 @@ impl TelegramData {
         Self::Enter(
             time,
             view.client_id(),
+            view.client_unique_identifier().to_string(),
             view.client_nickname().to_string(),
             view.client_country().to_string(),
         )
@@ -60,17 +61,24 @@ impl TelegramData {
 impl std::fmt::Display for TelegramData {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
-            TelegramData::Enter(time, client_id, nickname, country) => {
+            TelegramData::Enter(time, client_id, client_identifier, nickname, country) => {
                 write!(
                     f,
-                    "[{}] {}({})[{}] joined",
-                    time, nickname, client_id, country
+                    "[{}] <b>{}</b>(<code>{}</code>:{})[{}] joined",
+                    time,
+                    nickname,
+                    client_identifier,
+                    client_id,
+                    country_emoji::flag(country).unwrap_or_else(|| country.to_string())
                 )
             }
             TelegramData::Left(time, client_id, nickname, reason) => {
+                if reason.is_empty() {
+                    return write!(f, "[{}] <b>{}</b>({}) left", time, nickname, client_id);
+                }
                 write!(
                     f,
-                    "[{}] {}({}) left ({})",
+                    "[{}] <b>{}</b>({}) left ({})",
                     time, nickname, client_id, reason
                 )
             }
@@ -119,16 +127,20 @@ async fn staff_thread(
     interval: u64,
     notify_signal: Arc<Mutex<bool>>,
 ) -> anyhow::Result<()> {
-    let mut client_map: HashMap<i64, String> = HashMap::new();
+    let mut client_map: HashMap<i64, (String, bool)> = HashMap::new();
     for client in conn
         .query_clients()
         .await
         .map_err(|e| anyhow!("QueryClient failure: {:?}", e))?
     {
-        if client_map.get(&client.client_id()).is_some() {
+        if client_map.get(&client.client_id()).is_some() || client.client_type() == 1 {
             continue;
         }
-        client_map.insert(client.client_id(), client.client_nickname().to_string());
+
+        client_map.insert(
+            client.client_id(),
+            (client.client_nickname().to_string(), false),
+        );
     }
 
     conn.register_events()
@@ -143,6 +155,7 @@ async fn staff_thread(
             .map_err(|e| anyhow!("Got error in check watcher {:?}", e))?
         {
             info!("Exit from staff thread!");
+            conn.logout().await.ok();
             break;
         }
         let data = conn
@@ -164,16 +177,20 @@ async fn staff_thread(
             continue;
         }
         let data = data.unwrap();
-        let current_time = chrono::Utc::now().format("%Y-%m-%d %H:%M:%S").to_string();
+        let current_time = chrono::Local::now().format("%Y-%m-%d %H:%M:%S").to_string();
         for line in data.lines() {
             trace!("{}", line);
             if line.starts_with("notifycliententerview") {
                 let view = NotifyClientEnterView::from_query(line)
                     .map_err(|e| anyhow!("Got error while deserialize data: {:?}", e))?;
-                if view.client_unique_identifier().eq("ServerQuery") {
+                let is_server_query = view.client_unique_identifier().eq("ServerQuery");
+                client_map.insert(
+                    view.client_id(),
+                    (view.client_nickname().to_string(), is_server_query),
+                );
+                if is_server_query {
                     continue;
                 }
-                client_map.insert(view.client_id(), view.client_nickname().to_string());
                 sender
                     .send(TelegramData::from_enter(current_time.clone(), view))
                     .await
@@ -183,16 +200,19 @@ async fn staff_thread(
             if line.starts_with("notifyclientleftview") {
                 let view = NotifyClientLeftView::from_query(line)
                     .map_err(|e| anyhow!("Got error while deserialize data: {:?}", e))?;
-                let nickname = client_map.get(&view.client_id());
-                if nickname.is_none() {
+                if !client_map.contains_key(&view.client_id()) {
                     warn!("Can't find client: {:?}", view.client_id());
+                    continue;
+                }
+                let nickname = client_map.get(&view.client_id()).unwrap();
+                if nickname.1 {
                     continue;
                 }
                 sender
                     .send(TelegramData::from_left(
                         current_time.clone(),
                         &view,
-                        nickname.unwrap().clone(),
+                        nickname.0.clone(),
                     ))
                     .await
                     .map_err(|_| error!("Got error while send data to telegram"))
@@ -289,7 +309,10 @@ fn main() -> anyhow::Result<()> {
         .args(&[arg!([CONFIG_FILE] "Override default configure file location")])
         .get_matches();
 
-    env_logger::Builder::from_default_env().init();
+    env_logger::Builder::from_default_env()
+        .filter_module("rustls", LevelFilter::Warn)
+        .filter_module("reqwest", LevelFilter::Warn)
+        .init();
     tokio::runtime::Builder::new_multi_thread()
         .enable_all()
         .build()
