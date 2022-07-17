@@ -148,6 +148,7 @@ async fn staff_thread(
         .await
         .map_err(|e| anyhow!("Got error while register events: {:?}", e))?;
 
+    let mut received = false;
     debug!("Loop running!");
 
     loop {
@@ -167,6 +168,9 @@ async fn staff_thread(
         if data.is_none() {
             let mut signal = notify_signal.lock().await;
             if *signal {
+                if !received {
+                    warn!("Not received answer after period of time.");
+                }
                 conn.write_data("whoami\n\r")
                     .await
                     .map_err(|e| {
@@ -174,6 +178,7 @@ async fn staff_thread(
                     })
                     .ok();
                 *signal = false;
+                received = false;
             }
             continue;
         }
@@ -222,6 +227,9 @@ async fn staff_thread(
                     .map_err(|_| error!("Got error while send data to telegram"))
                     .ok();
                 client_map.remove(&view.client_id());
+            }
+            if line.starts_with("virtualserver_status=") {
+                received = true;
             }
         }
         sleep(Duration::from_millis(interval)).await;
