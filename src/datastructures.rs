@@ -227,11 +227,15 @@ pub mod config {
     #[derive(Clone, Debug, Deserialize)]
     pub struct Server {
         server_id: Option<i64>,
+        ignore_user: Option<Vec<String>>,
     }
 
     impl Server {
         pub fn server_id(&self) -> i64 {
             self.server_id.unwrap_or(1)
+        }
+        pub fn ignore_user_name(&self) -> Vec<String> {
+            self.ignore_user.clone().unwrap_or_default()
         }
     }
 

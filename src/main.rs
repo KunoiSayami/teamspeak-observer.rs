@@ -126,6 +126,7 @@ async fn staff_thread(
     sender: mpsc::Sender<TelegramData>,
     interval: u64,
     notify_signal: Arc<Mutex<bool>>,
+    ignore_list: Vec<String>,
 ) -> anyhow::Result<()> {
     let mut client_map: HashMap<i64, (String, bool)> = HashMap::new();
     for client in conn
@@ -183,7 +184,10 @@ async fn staff_thread(
             if line.starts_with("notifycliententerview") {
                 let view = NotifyClientEnterView::from_query(line)
                     .map_err(|e| anyhow!("Got error while deserialize data: {:?}", e))?;
-                let is_server_query = view.client_unique_identifier().eq("ServerQuery");
+                let is_server_query = view.client_unique_identifier().eq("ServerQuery")
+                    || ignore_list
+                        .iter()
+                        .any(|element| element.eq(view.client_unique_identifier()));
                 client_map.insert(
                     view.client_id(),
                     (view.client_nickname().to_string(), is_server_query),
@@ -243,6 +247,7 @@ async fn observer(conn: SocketConn, config: Config) -> anyhow::Result<()> {
         telegram_sender,
         config.misc().interval(),
         alt_signal,
+        config.server().ignore_user_name(),
     ));
     let telegram_handler = tokio::spawn(telegram_thread(
         config.telegram().api_key().to_string(),
