@@ -13,7 +13,6 @@ use std::time::Duration;
 use teloxide::prelude::*;
 use teloxide::types::ParseMode;
 use tokio::sync::{mpsc, watch, Mutex};
-use tokio::time::sleep;
 
 mod datastructures;
 mod socketlib;
@@ -39,13 +38,13 @@ async fn init_connection(
 
 enum TelegramData {
     Enter(String, i64, String, String, String),
-    Left(String, i64, String, String),
+    Left(String, NotifyClientLeftView, String),
     Terminate,
 }
 
 impl TelegramData {
     fn from_left(time: String, view: &NotifyClientLeftView, nickname: String) -> Self {
-        Self::Left(time, view.client_id(), nickname, view.reason().to_string())
+        Self::Left(time, view.clone(), nickname)
     }
     fn from_enter(time: String, view: NotifyClientEnterView) -> Self {
         Self::Enter(
@@ -72,16 +71,52 @@ impl std::fmt::Display for TelegramData {
                     country_emoji::flag(country).unwrap_or_else(|| country.to_string())
                 )
             }
-            TelegramData::Left(time, client_id, nickname, reason) => {
-                if reason.is_empty() {
-                    return write!(f, "[{}] <b>{}</b>({}) left", time, nickname, client_id);
+            TelegramData::Left(time, view, nickname) => match view.reason_id() {
+                8 => {
+                    if view.reason().is_empty() {
+                        write!(
+                            f,
+                            "[{}] <b>{}</b>({}) left",
+                            time,
+                            nickname,
+                            view.client_id()
+                        )
+                    } else {
+                        write!(
+                            f,
+                            "[{}] <b>{}</b>({}) left ({})",
+                            time,
+                            nickname,
+                            view.client_id(),
+                            view.reason()
+                        )
+                    }
                 }
-                write!(
+                3 => write!(
                     f,
-                    "[{}] <b>{}</b>({}) left ({})",
-                    time, nickname, client_id, reason
-                )
-            }
+                    "[{}] <b>{}</b>({}) connection lost #timeout",
+                    time,
+                    nickname,
+                    view.client_id()
+                ),
+                5 | 6 => {
+                    write!(f,
+                           "[{time}] <b>{nickname}</b>({client_id}) was #{operation} by <b>{invoker}</b>(<code>{invoker_uid}</code>){reason}",
+                           time = time,
+                           nickname = nickname,
+                           operation = if view.reason_id() == 5 { "kicked" } else { "banned" },
+                           client_id = view.client_id(),
+                           invoker = view.invoker_name(),
+                           invoker_uid = view.invoker_uid(),
+                           reason = if view.reason().is_empty() {
+                               " with no reason".to_string()
+                           } else {
+                               format!(": {}", view.reason())
+                           }
+                    )
+                }
+                _ => unreachable!("Got unexpected left message: {:?}", view),
+            },
             TelegramData::Terminate => unsafe {
                 unreachable_unchecked();
             },
@@ -122,7 +157,7 @@ async fn telegram_thread(
 
 async fn staff_thread(
     mut conn: SocketConn,
-    recv: watch::Receiver<bool>,
+    mut recv: watch::Receiver<bool>,
     sender: mpsc::Sender<TelegramData>,
     interval: u64,
     notify_signal: Arc<Mutex<bool>>,
@@ -236,7 +271,11 @@ async fn staff_thread(
                 received = true;
             }
         }
-        sleep(Duration::from_millis(interval)).await;
+        if let Ok(_) = tokio::time::timeout(Duration::from_millis(interval), recv.changed()).await {
+            info!("Exit from staff thread!");
+            conn.logout().await.ok();
+            break;
+        }
     }
     sender
         .send(TelegramData::Terminate)

@@ -101,6 +101,14 @@ pub mod notifies {
         client_id: i64,
         #[serde(rename = "reasonmsg", default)]
         reason: String,
+        #[serde(rename = "reasonid")]
+        reason_id: i64,
+        /*#[serde(rename = "invokerid", default)]
+        invoker_id: i64,*/
+        #[serde(rename = "invokeruid", default)]
+        invoker_uid: String,
+        #[serde(rename = "invokername", default)]
+        invoker_name: String,
     }
 
     impl NotifyClientLeftView {
@@ -109,6 +117,15 @@ pub mod notifies {
         }
         pub fn reason(&self) -> &str {
             &self.reason
+        }
+        pub fn reason_id(&self) -> i64 {
+            self.reason_id
+        }
+        pub fn invoker_uid(&self) -> &str {
+            &self.invoker_uid
+        }
+        pub fn invoker_name(&self) -> &str {
+            &self.invoker_name
         }
     }
 
