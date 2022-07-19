@@ -244,6 +244,7 @@ async fn staff_thread(
                     .await
                     .map_err(|_| error!("Got error while send data to telegram"))
                     .ok();
+                continue;
             }
             if line.starts_with("notifyclientleftview") {
                 let view = NotifyClientLeftView::from_query(line)
@@ -266,9 +267,11 @@ async fn staff_thread(
                     .map_err(|_| error!("Got error while send data to telegram"))
                     .ok();
                 client_map.remove(&view.client_id());
+                continue;
             }
             if line.contains("virtualserver_status=") {
                 received = true;
+                continue;
             }
         }
         if let Ok(_) = tokio::time::timeout(Duration::from_millis(interval), recv.changed()).await {
