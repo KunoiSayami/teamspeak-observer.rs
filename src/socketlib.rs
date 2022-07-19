@@ -67,7 +67,7 @@ impl SocketConn {
                 break;
             }
         }
-        Ok(if ret.is_empty() { None } else { Some(ret) })
+        Ok(Some(ret))
     }
 
     pub async fn write_data(&mut self, payload: &str) -> anyhow::Result<()> {
