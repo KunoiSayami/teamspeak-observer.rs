@@ -200,7 +200,7 @@ async fn staff_thread(
             .await
             .map_err(|e| anyhow!("Got error while read data: {:?}", e))?;
 
-        if matches!(&data, Some(x) if x.is_empty()) {
+        if !matches!(&data, Some(x) if !x.is_empty()) {
             let mut signal = notify_signal.lock().await;
             if *signal {
                 if !received {

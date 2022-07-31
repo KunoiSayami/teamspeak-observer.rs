@@ -95,13 +95,17 @@ pub mod notifies {
         }
     }
 
+    fn default_reason_id() -> i64 {
+        8
+    }
+
     #[derive(Clone, Debug, Deserialize)]
     pub struct NotifyClientLeftView {
         #[serde(rename = "clid")]
         client_id: i64,
         #[serde(rename = "reasonmsg", default)]
         reason: String,
-        #[serde(rename = "reasonid")]
+        #[serde(rename = "reasonid", default = "default_reason_id")]
         reason_id: i64,
         /*#[serde(rename = "invokerid", default)]
         invoker_id: i64,*/
